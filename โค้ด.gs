@@ -1,19 +1,61 @@
-// Google Apps Script สำหรับระบบประกาศผลสอบ
 const SHEET_ID = '1uoptlfMVeePnwQBlVmUawYZPIetSHW6ih3nwNJk6NXM'; 
 const SHEET_NAME = 'Students';
 
-function doGet(e) {
-  return HtmlService.createTemplateFromFile('index')
-    .evaluate()
-    .setTitle('ระบบดูคะแนนสอบเข้า')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+// ฟังก์ชันช่วยตอบกลับเป็น JSON
+function responseJSON(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
-// 1. ดึงข้อมูล
+// 1. รับ GET Request (สำหรับดึงข้อมูล)
+function doGet(e) {
+  const action = e.parameter.action;
+  
+  if (action === 'getAllStudents') {
+    const result = getAllStudents();
+    return responseJSON(result);
+  }
+  
+  return responseJSON({ success: false, message: 'Invalid Action (GET)' });
+}
+
+// 2. รับ POST Request (สำหรับ สร้าง/แก้ไข/ลบ)
+function doPost(e) {
+  try {
+    // รับข้อมูลที่ส่งมาจาก Vercel
+    const params = JSON.parse(e.postData.contents);
+    const action = params.action;
+    const data = params.data; // ข้อมูลที่แนบมา (อาจเป็น object หรือ array)
+
+    let result;
+
+    if (action === 'createStudent') {
+      result = createStudent(data); // ส่ง Object ไปตรงๆ ไม่ต้อง stringify ซ้ำ
+    } else if (action === 'createStudentsBulk') {
+      result = createStudentsBulk(data);
+    } else if (action === 'updateStudent') {
+      result = updateStudent(data);
+    } else if (action === 'updateScoresBulk') {
+      result = updateScoresBulk(data);
+    } else if (action === 'deleteStudent') {
+      result = deleteStudent(data.id);
+    } else if (action === 'deleteStudentsBulk') {
+      result = deleteStudentsBulk(data.ids);
+    } else {
+      result = { success: false, message: 'Invalid Action (POST)' };
+    }
+
+    return responseJSON(result);
+
+  } catch (err) {
+    return responseJSON({ success: false, message: err.toString() });
+  }
+}
+
+// --- Logic เดิม (ปรับปรุงนิดหน่อยให้รับ Object แทน JSON String) ---
+
 function getAllStudents() {
   const sheet = getSheet();
-  // ใช้ getDisplayValues เพื่อดึงค่าที่เป็น Text (จะได้เลข 00 ติดมาด้วย)
   const data = sheet.getRange(1, 1, sheet.getLastRow(), 13).getDisplayValues();
   
   if (data.length <= 1) return { success: true, students: [] };
@@ -22,10 +64,9 @@ function getAllStudents() {
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     if (!row[0]) continue;
-
     students.push({
       id: row[0],
-      exam_id: String(row[1]),
+      exam_id: String(row[1]).replace(/^'/, ''), // ลบ ' ออกตอนส่งกลับ
       full_name: row[2],
       previous_school: row[3],
       grade_level: row[4],
@@ -36,119 +77,72 @@ function getAllStudents() {
       aptitude_score: parseFloat(row[9]) || 0,
       total_score: parseFloat(row[10]) || 0,
       rank: parseInt(row[11]) || 0,
-      national_id: String(row[12] || '') 
+      national_id: String(row[12] || '').replace(/^'/, '')
     });
   }
   return { success: true, students: students };
 }
 
-// 2. เพิ่มคนเดียว
-function createStudent(jsonData) {
+function createStudent(data) {
+  // รับ data เป็น object เลย ไม่ต้อง JSON.parse
   try {
-    const data = JSON.parse(jsonData);
     const sheet = getSheet();
     const id = Utilities.getUuid();
-    
     const newRow = [
-      id,
-      "'" + data.exam_id, // ใส่ ' บังคับ Text
-      data.full_name,
-      data.previous_school,
-      data.grade_level,
-      data.thai_score || 0,
-      data.math_score || 0,
-      data.science_score || 0,
-      data.english_score || 0,
-      data.aptitude_score || 0,
-      data.total_score || 0,
-      data.rank || 0,
-      "'" + (data.national_id || '') // ใส่ ' บังคับ Text (แก้ปัญหา 00 หาย)
+      id, "'" + data.exam_id, data.full_name, data.previous_school, data.grade_level,
+      data.thai_score || 0, data.math_score || 0, data.science_score || 0,
+      data.english_score || 0, data.aptitude_score || 0, data.total_score || 0,
+      data.rank || 0, "'" + (data.national_id || '')
     ];
-    
     sheet.appendRow(newRow);
     return { success: true, message: 'บันทึกข้อมูลสำเร็จ', id: id };
-  } catch (e) {
-    return { success: false, message: e.toString() };
-  }
+  } catch (e) { return { success: false, message: e.toString() }; }
 }
 
-// 3. เพิ่มหลายคน / Excel (แก้ปัญหา 00 หายตรงนี้)
-function createStudentsBulk(jsonData) {
+function createStudentsBulk(students) {
   try {
-    const students = JSON.parse(jsonData);
     const sheet = getSheet();
-    if (students.length === 0) return { success: false, message: 'ไม่พบข้อมูล' };
-
+    if (!students || students.length === 0) return { success: false, message: 'ไม่พบข้อมูล' };
     const newRows = students.map(data => [
-      Utilities.getUuid(),
-      "'" + data.exam_id, // ใส่ ' นำหน้า
-      data.full_name,
-      data.previous_school,
-      data.grade_level,
-      data.thai_score || 0,
-      data.math_score || 0,
-      data.science_score || 0,
-      data.english_score || 0,
-      data.aptitude_score || 0,
-      data.total_score || 0,
-      data.rank || 0,
-      "'" + (data.national_id || '') // ใส่ ' นำหน้าเลขบัตร ปชช.
+      Utilities.getUuid(), "'" + data.exam_id, data.full_name, data.previous_school, data.grade_level,
+      data.thai_score || 0, data.math_score || 0, data.science_score || 0,
+      data.english_score || 0, data.aptitude_score || 0, data.total_score || 0,
+      data.rank || 0, "'" + (data.national_id || '')
     ]);
-    
     sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, 13).setValues(newRows);
     return { success: true, message: `นำเข้าข้อมูลสำเร็จ ${newRows.length} รายการ` };
-  } catch (e) {
-    return { success: false, message: e.toString() };
-  }
+  } catch (e) { return { success: false, message: e.toString() }; }
 }
 
-// 4. อัปเดตข้อมูล
-function updateStudent(jsonData) {
+function updateStudent(data) {
   try {
-    const data = JSON.parse(jsonData);
     const sheet = getSheet();
     const allData = sheet.getDataRange().getValues();
-    
     for (let i = 1; i < allData.length; i++) {
       if (allData[i][0] === data.id) {
         sheet.getRange(i + 1, 1, 1, 13).setValues([[
-          data.id,
-          "'" + data.exam_id,
-          data.full_name,
-          data.previous_school,
-          data.grade_level,
-          data.thai_score || 0,
-          data.math_score || 0,
-          data.science_score || 0,
-          data.english_score || 0,
-          data.aptitude_score || 0,
-          data.total_score || 0,
-          data.rank || 0,
-          "'" + (data.national_id || '')
+          data.id, "'" + data.exam_id, data.full_name, data.previous_school, data.grade_level,
+          data.thai_score || 0, data.math_score || 0, data.science_score || 0,
+          data.english_score || 0, data.aptitude_score || 0, data.total_score || 0,
+          data.rank || 0, "'" + (data.national_id || '')
         ]]);
         return { success: true, message: 'อัปเดตข้อมูลสำเร็จ' };
       }
     }
     return { success: false, message: 'ไม่พบข้อมูล' };
-  } catch (e) {
-    return { success: false, message: e.toString() };
-  }
+  } catch (e) { return { success: false, message: e.toString() }; }
 }
 
-// 5. อัปเดตคะแนนจาก Excel
-function updateScoresBulk(jsonData) {
+function updateScoresBulk(scoresData) {
   try {
-    const scoresData = JSON.parse(jsonData);
     const sheet = getSheet();
     const range = sheet.getDataRange();
     const allValues = range.getValues(); 
-    
     let studentMap = {};
     for (let i = 1; i < allValues.length; i++) {
-      let eid = String(allValues[i][1]).trim();
+      let eid = String(allValues[i][1]).replace(/^'/, '').trim();
       studentMap[eid] = i;
     }
-
     let updatedCount = 0;
     scoresData.forEach(item => {
       let targetId = String(item.exam_id).trim();
@@ -158,24 +152,15 @@ function updateScoresBulk(jsonData) {
         let ma = parseFloat(item.math_score) || 0;
         let en = parseFloat(item.english_score) || 0;
         let total = sc + ma + en;
-
-        allValues[r][6] = ma;
-        allValues[r][7] = sc;
-        allValues[r][8] = en;
-        allValues[r][10] = total;
+        allValues[r][6] = ma; allValues[r][7] = sc; allValues[r][8] = en; allValues[r][10] = total;
         updatedCount++;
       }
     });
-
     if (updatedCount > 0) {
       range.setValues(allValues);
       return { success: true, message: `อัปเดตคะแนนสำเร็จ ${updatedCount} รายการ` };
-    } else {
-      return { success: false, message: 'ไม่พบรหัสผู้สอบที่ตรงกัน' };
-    }
-  } catch (e) {
-    return { success: false, message: e.toString() };
-  }
+    } else { return { success: false, message: 'ไม่พบรหัสผู้สอบที่ตรงกัน' }; }
+  } catch (e) { return { success: false, message: e.toString() }; }
 }
 
 function deleteStudent(id) {
@@ -189,36 +174,23 @@ function deleteStudent(id) {
       }
     }
     return { success: false, message: 'ไม่พบข้อมูล' };
-  } catch (e) {
-    return { success: false, message: e.toString() };
-  }
+  } catch (e) { return { success: false, message: e.toString() }; }
 }
 
-// 8. [ใหม่!] ลบนักเรียนแบบกลุ่ม (รับ Array ของ ID)
-function deleteStudentsBulk(jsonIds) {
+function deleteStudentsBulk(idsToDelete) {
   try {
-    const idsToDelete = JSON.parse(jsonIds); // ["uuid-1", "uuid-2"]
     const sheet = getSheet();
     const data = sheet.getDataRange().getValues();
-    
-    // วนลูปจากล่างขึ้นบน (Important: Reverse loop) เพื่อไม่ให้กระทบ Index แถวอื่นเวลาลบ
     let deletedCount = 0;
     for (let i = data.length - 1; i >= 1; i--) {
-      // data[i][0] คือ Column ID
       if (idsToDelete.includes(data[i][0])) {
-        sheet.deleteRow(i + 1); // +1 เพราะ Row ใน Sheet เริ่มที่ 1
+        sheet.deleteRow(i + 1);
         deletedCount++;
       }
     }
-    
-    if (deletedCount > 0) {
-      return { success: true, message: `ลบข้อมูลสำเร็จ ${deletedCount} รายการ` };
-    } else {
-      return { success: false, message: 'ไม่พบข้อมูลที่ต้องการลบ' };
-    }
-  } catch (e) {
-    return { success: false, message: e.toString() };
-  }
+    if (deletedCount > 0) return { success: true, message: `ลบข้อมูลสำเร็จ ${deletedCount} รายการ` };
+    else return { success: false, message: 'ไม่พบข้อมูลที่ต้องการลบ' };
+  } catch (e) { return { success: false, message: e.toString() }; }
 }
 
 function getSheet() {
