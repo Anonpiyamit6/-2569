@@ -1,7 +1,7 @@
-const SHEET_ID = '1uoptlfMVeePnwQBlVmUawYZPIetSHW6ih3nwNJk6NXM'; 
+const SHEET_ID = '1uoptlfMVeePnwQBlVmUawYZPIetSHW6ih3nwNJk6NXM'; // ไอดีที่คุณให้มา
 const SHEET_NAME = 'Students';
 
-// ฟังก์ชันช่วยตอบกลับเป็น JSON
+// ฟังก์ชันตอบกลับ JSON แบบมาตรฐาน (แก้ปัญหา CORS)
 function responseJSON(data) {
   return ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
@@ -12,47 +12,47 @@ function doGet(e) {
   const action = e.parameter.action;
   
   if (action === 'getAllStudents') {
-    const result = getAllStudents();
-    return responseJSON(result);
+    return responseJSON(getAllStudents());
   }
   
-  return responseJSON({ success: false, message: 'Invalid Action (GET)' });
+  // Default: ถ้าไม่ส่ง action มา ให้คืนค่าว่างหรือ test
+  return responseJSON({ success: true, message: 'API is working', timestamp: new Date() });
 }
 
 // 2. รับ POST Request (สำหรับ สร้าง/แก้ไข/ลบ)
 function doPost(e) {
   try {
-    // รับข้อมูลที่ส่งมาจาก Vercel
+    // รับข้อมูลดิบๆ เพื่อหลีกเลี่ยงปัญหา CORS Preflight
     const params = JSON.parse(e.postData.contents);
     const action = params.action;
-    const data = params.data; // ข้อมูลที่แนบมา (อาจเป็น object หรือ array)
+    const data = params.data;
 
     let result;
-
-    if (action === 'createStudent') {
-      result = createStudent(data); // ส่ง Object ไปตรงๆ ไม่ต้อง stringify ซ้ำ
-    } else if (action === 'createStudentsBulk') {
-      result = createStudentsBulk(data);
-    } else if (action === 'updateStudent') {
-      result = updateStudent(data);
-    } else if (action === 'updateScoresBulk') {
-      result = updateScoresBulk(data);
-    } else if (action === 'deleteStudent') {
-      result = deleteStudent(data.id);
-    } else if (action === 'deleteStudentsBulk') {
-      result = deleteStudentsBulk(data.ids);
-    } else {
-      result = { success: false, message: 'Invalid Action (POST)' };
-    }
+    if (action === 'createStudent') result = createStudent(data);
+    else if (action === 'createStudentsBulk') result = createStudentsBulk(data);
+    else if (action === 'updateStudent') result = updateStudent(data);
+    else if (action === 'updateScoresBulk') result = updateScoresBulk(data);
+    else if (action === 'deleteStudent') result = deleteStudent(data.id);
+    else if (action === 'deleteStudentsBulk') result = deleteStudentsBulk(data.ids);
+    else result = { success: false, message: 'Invalid Action (POST)' };
 
     return responseJSON(result);
-
   } catch (err) {
-    return responseJSON({ success: false, message: err.toString() });
+    return responseJSON({ success: false, message: 'Server Error: ' + err.toString() });
   }
 }
 
-// --- Logic เดิม (ปรับปรุงนิดหน่อยให้รับ Object แทน JSON String) ---
+// --- Logic การทำงานกับ Sheet ---
+
+function getSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME);
+    sheet.appendRow(['ID','Exam ID','Full Name','Previous School','Grade Level','Thai','Math','Science','English','Aptitude','Total','Rank','National ID']);
+  }
+  return sheet;
+}
 
 function getAllStudents() {
   const sheet = getSheet();
@@ -66,7 +66,7 @@ function getAllStudents() {
     if (!row[0]) continue;
     students.push({
       id: row[0],
-      exam_id: String(row[1]).replace(/^'/, ''), // ลบ ' ออกตอนส่งกลับ
+      exam_id: String(row[1]).replace(/^'/, ''),
       full_name: row[2],
       previous_school: row[3],
       grade_level: row[4],
@@ -84,7 +84,6 @@ function getAllStudents() {
 }
 
 function createStudent(data) {
-  // รับ data เป็น object เลย ไม่ต้อง JSON.parse
   try {
     const sheet = getSheet();
     const id = Utilities.getUuid();
@@ -191,14 +190,4 @@ function deleteStudentsBulk(idsToDelete) {
     if (deletedCount > 0) return { success: true, message: `ลบข้อมูลสำเร็จ ${deletedCount} รายการ` };
     else return { success: false, message: 'ไม่พบข้อมูลที่ต้องการลบ' };
   } catch (e) { return { success: false, message: e.toString() }; }
-}
-
-function getSheet() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(['ID','Exam ID','Full Name','Previous School','Grade Level','Thai','Math','Science','English','Aptitude','Total','Rank','National ID']);
-  }
-  return sheet;
 }
