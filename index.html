@@ -32,104 +32,80 @@
   </style>
 
   <script>
-    // ********** ตรวจสอบ URL ให้แน่ใจว่าลงท้ายด้วย /exec **********
-    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzHuxMRlBpw6-_qwv2MgnUTQyuRcXYxwmwWS9TXopP7XtsiwJWXvFDMzTad9H2p1Ud9ag/exec';
+    // --- ตั้งค่า API Connection สำหรับ Vercel ---
+    // URL ของ Web App Deployment ล่าสุด
+    const API_URL = "https://script.google.com/macros/s/AKfycbzHuxMRlBpw6-_qwv2MgnUTQyuRcXYxwmwWS9TXopP7XtsiwJWXvFDMzTad9H2p1Ud9ag/exec";
 
+    // ฟังก์ชันยิง Request ไปยัง Google Apps Script
+    // ใช้ text/plain เพื่อเลี่ยง CORS Preflight และ JSON.stringify ใน body
+    async function apiRequest(action, payload = null) {
+        if (action === 'getAll') {
+            const res = await fetch(API_URL);
+            return await res.json();
+        } else {
+            const res = await fetch(API_URL, {
+                method: "POST",
+                body: JSON.stringify({ action: action, data: payload })
+            });
+            return await res.json();
+        }
+    }
+
+    // dataSdk ฉบับปรับปรุงใช้ fetch แทน google.script.run
     window.dataSdk = {
       init: async (handler) => { 
-        window.dataSdkHandler = handler; 
-        console.log("Initializing SDK...");
-        await window.dataSdk.refresh(); 
-        return { isOk: true }; 
+          window.dataSdkHandler = handler; 
+          await window.dataSdk.refresh(); 
+          return { isOk: true }; 
       },
-
-      // ฟังก์ชันกลางสำหรับเรียก API
-      _call: async (action, payload = null) => {
-        try {
-          console.log(`Calling API: ${action}`);
-          // ใช้ POST เสมอเพื่อความเสถียรในการส่งข้อมูล JSON ข้าม Domain
-          const options = {
-              method: 'POST',
-              body: JSON.stringify({ action: action, data: payload }),
-              // ใช้ text/plain เพื่อหลีกเลี่ยง CORS Preflight check ของ Google Apps Script
-              headers: { "Content-Type": "text/plain;charset=utf-8" }
-          };
-
-          const res = await fetch(APPS_SCRIPT_URL, options);
-          
-          if (!res.ok) {
-             throw new Error(`HTTP Error: ${res.status}`);
+      refresh: async () => { 
+          try {
+              const response = await apiRequest('getAll');
+              if (response.success) { 
+                  // Map ข้อมูลให้มี field __backendId เพื่อใช้ภายใน
+                  const mappedData = response.students.map(s => ({ ...s, __backendId: s.id })); 
+                  if (window.dataSdkHandler?.onDataChanged) window.dataSdkHandler.onDataChanged(mappedData); 
+                  return { isOk: true, data: mappedData }; 
+              } else {
+                  return { isOk: false, error: { message: response.message } };
+              }
+          } catch(e) {
+              console.error(e);
+              return { isOk: false, error: { message: "เชื่อมต่อ Server ไม่ได้ กรุณาลองใหม่" } };
           }
-
-          const json = await res.json();
-          console.log(`API Response (${action}):`, json);
-          return json;
-        } catch (e) {
-          console.error("API Connection Error:", e);
-          // ถ้า error ให้ return object ที่มี success: false
-          return { success: false, message: "การเชื่อมต่อขัดข้อง: " + e.message + " (กรุณาเช็คว่า Deploy เป็น 'Anyone' หรือยัง)" };
-        }
       },
-
-      refresh: async () => {
-        // ใช้ getAllStudents ผ่าน _call (ซึ่งจะส่งเป็น POST ไปที่ doGet/doPost ของ GAS)
-        // เพื่อความชัวร์ เราเรียก action 'getAllStudents'
-        // แต่ใน Code.gs เราแก้ doPost ให้รองรับ getAllStudents ไหม? 
-        // เพื่อความปลอดภัย เราใช้ GET สำหรับดึงข้อมูล ตามหลักการ
-        try {
-            const url = `${APPS_SCRIPT_URL}?action=getAllStudents`;
-            const res = await fetch(url);
-            const response = await res.json();
-            
-            if (response.success) {
-                const mappedData = response.students.map(s => ({ ...s, __backendId: s.id }));
-                if (window.dataSdkHandler?.onDataChanged) window.dataSdkHandler.onDataChanged(mappedData);
-                return { isOk: true, data: mappedData };
-            } else {
-                console.error("Server returned error:", response);
-                return { isOk: false, error: { message: response.message } };
-            }
-        } catch (e) {
-             console.error("Refresh Error:", e);
-             return { isOk: false, error: { message: "โหลดข้อมูลไม่สำเร็จ" } };
-        }
+      create: async (data) => { 
+          const res = await apiRequest('create', data);
+          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+          else return { isOk: false, error: { message: res.message } };
       },
-
-      create: async (data) => {
-        const res = await window.dataSdk._call('createStudent', data);
-        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-        else return { isOk: false, error: { message: res.message } };
+      createBulk: async (dataArray) => { 
+          const res = await apiRequest('createBulk', dataArray);
+          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+          else return { isOk: false, error: { message: res.message } };
       },
-
-      createBulk: async (dataArray) => {
-        const res = await window.dataSdk._call('createStudentsBulk', dataArray);
-        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-        else return { isOk: false, error: { message: res.message } };
+      updateScoresBulk: async (dataArray) => { 
+          const res = await apiRequest('updateScoresBulk', dataArray);
+          if(res.success) { await window.dataSdk.refresh(); return { isOk: true, message: res.message }; }
+          else return { isOk: false, error: { message: res.message } };
       },
-
-      updateScoresBulk: async (dataArray) => {
-        const res = await window.dataSdk._call('updateScoresBulk', dataArray);
-        if(res.success) { await window.dataSdk.refresh(); return { isOk: true, message: res.message }; }
-        else return { isOk: false, error: { message: res.message } };
+      update: async (data) => { 
+          const updateData = { ...data, id: data.__backendId }; 
+          const res = await apiRequest('update', updateData);
+          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+          else return { isOk: false, error: { message: res.message } };
       },
-
-      update: async (data) => {
-        const updateData = { ...data, id: data.__backendId };
-        const res = await window.dataSdk._call('updateStudent', updateData);
-        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-        else return { isOk: false, error: { message: res.message } };
+      delete: async (data) => { 
+          // ส่ง id ไปลบ
+          const res = await apiRequest('delete', { id: data.__backendId });
+          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+          else return { isOk: false, error: { message: res.message } };
       },
-
-      delete: async (data) => {
-        const res = await window.dataSdk._call('deleteStudent', { id: data.__backendId });
-        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-        else return { isOk: false, error: { message: res.message } };
-      },
-
-      deleteBulk: async (ids) => {
-        const res = await window.dataSdk._call('deleteStudentsBulk', { ids: ids });
-        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-        else return { isOk: false, error: { message: res.message } };
+      deleteBulk: async (ids) => { 
+          // ส่ง Array id ไปลบ
+          const res = await apiRequest('deleteBulk', { ids: ids });
+          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+          else return { isOk: false, error: { message: res.message } };
       }
     };
   </script>
@@ -258,7 +234,7 @@
     function toggleAllCheckboxes(source) { const checkboxes = document.querySelectorAll('.row-checkbox'); checkboxes.forEach(cb => { cb.checked = source.checked; if(source.checked) checkedIds.add(cb.value); else checkedIds.delete(cb.value); }); updateDeleteButton(); }
     function toggleCheckbox(id) { const cb = document.querySelector(`.row-checkbox[value="${id}"]`); if(cb.checked) checkedIds.add(id); else checkedIds.delete(id); updateDeleteButton(); }
     function updateDeleteButton() { const btn = document.getElementById('btn-bulk-delete'); if(checkedIds.size > 0) { btn.classList.remove('hidden'); document.getElementById('selected-count').textContent = checkedIds.size; } else { btn.classList.add('hidden'); } }
-    function executeBulkDelete() { if(checkedIds.size === 0) return; showConfirm('ยืนยันลบหมู่', `ต้องการลบข้อมูล ${checkedIds.size} รายการหรือไม่?`, () => { showLoading(`กำลังลบ ${checkedIds.size} รายการ...`); window.dataSdk.deleteBulk(Array.from(checkedIds)).then(res => { setTimeout(() => { hideLoading(); checkedIds.clear(); if(res.isOk) { showAlert('สำเร็จ', 'ลบข้อมูลเรียบร้อยแล้ว'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); }
+    async function executeBulkDelete() { if(checkedIds.size === 0) return; showConfirm('ยืนยันลบหมู่', `ต้องการลบข้อมูล ${checkedIds.size} รายการหรือไม่?`, () => { showLoading(`กำลังลบ ${checkedIds.size} รายการ...`); window.dataSdk.deleteBulk(Array.from(checkedIds)).then(res => { setTimeout(() => { hideLoading(); checkedIds.clear(); if(res.isOk) { showAlert('สำเร็จ', 'ลบข้อมูลเรียบร้อยแล้ว'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); }
 
     function renderLogin() {
       const config = window.elementSdk?.config || defaultConfig;
@@ -452,11 +428,13 @@
     function showAddStudentForm() { formMode = 'create'; document.getElementById('modal-title').textContent = 'เพิ่มผู้เข้าสอบใหม่'; document.getElementById('add-mode-tabs').classList.remove('hidden'); document.getElementById('score-section').classList.add('hidden'); switchAddTab('single'); document.getElementById('student-form').reset(); openModal(); }
     function showEditForm(id) { formMode = 'update'; document.getElementById('modal-title').textContent = 'แก้ไขข้อมูล'; document.getElementById('add-mode-tabs').classList.add('hidden'); ['single','multiple','excel','score'].forEach(v => document.getElementById(`view-${v}`).classList.add('hidden')); document.getElementById('view-single').classList.remove('hidden'); document.getElementById('score-section').classList.remove('hidden'); const s = studentsData.find(x => x.__backendId === id); if(!s) return; document.getElementById('student-backend-id').value = s.__backendId; document.getElementById('form-national-id').value = s.national_id || ''; document.getElementById('form-exam-id').value = s.exam_id; document.getElementById('form-grade').value = s.grade_level; document.getElementById('form-name').value = s.full_name; document.getElementById('form-school').value = s.previous_school; document.getElementById('score-science').value = s.science_score; document.getElementById('score-math').value = s.math_score; document.getElementById('score-english').value = s.english_score; openModal(); }
     
+    // Updated handleSingleSubmit to wait for async
     function handleSingleSubmit(e) { e.preventDefault(); const scores = [0, parseFloat(document.getElementById('score-math').value)||0, parseFloat(document.getElementById('score-science').value)||0, parseFloat(document.getElementById('score-english').value)||0, 0]; const data = { exam_id: document.getElementById('form-exam-id').value, national_id: document.getElementById('form-national-id').value, grade_level: document.getElementById('form-grade').value, full_name: document.getElementById('form-name').value, previous_school: document.getElementById('form-school').value, thai_score: scores[0], math_score: scores[1], science_score: scores[2], english_score: scores[3], aptitude_score: scores[4], total_score: scores.reduce((a,b)=>a+b,0) }; showLoading('กำลังบันทึก...'); const action = formMode === 'create' ? window.dataSdk.create(data) : (data.__backendId = document.getElementById('student-backend-id').value, window.dataSdk.update(data)); action.then(res => { setTimeout(() => { hideLoading(); if(res.isOk) { closeModal(); showAlert('สำเร็จ', 'บันทึกเรียบร้อย'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }
     function addMultipleRow() { const tr = document.createElement('tr'); tr.className = 'bg-white border-b hover:bg-gray-50'; tr.innerHTML = `<td class="p-2"><input type="text" class="w-full border rounded px-2 py-1 multi-national-id text-xs" placeholder="บัตรฯ"></td><td class="p-2"><input type="text" class="w-full border rounded px-2 py-1 multi-exam-id text-xs" placeholder="รหัส"></td><td class="p-2"><input type="text" class="w-full border rounded px-2 py-1 multi-name text-xs" placeholder="ชื่อ"></td><td class="p-2"><select class="w-full border rounded px-2 py-1 multi-grade text-xs"><option value="p6">ป.6</option><option value="p5">ป.5</option><option value="p4">ป.4</option><option value="m3">ม.3</option></select></td><td class="p-2"><input type="text" class="w-full border rounded px-2 py-1 multi-school text-xs" placeholder="รร."></td><td class="p-2 text-center"><button type="button" onclick="this.closest('tr').remove()" class="text-red-500 font-bold">x</button></td>`; document.getElementById('multiple-tbody').appendChild(tr); }
     function handleMultipleSubmit() { const rows = document.querySelectorAll('#multiple-tbody tr'); const bulkData = []; rows.forEach(row => { const nid = row.querySelector('.multi-national-id').value.trim(); const id = row.querySelector('.multi-exam-id').value.trim(); const name = row.querySelector('.multi-name').value.trim(); if(id && name) bulkData.push({ exam_id: id, national_id: nid, full_name: name, grade_level: row.querySelector('.multi-grade').value, previous_school: row.querySelector('.multi-school').value.trim(), thai_score:0, math_score:0, science_score:0, english_score:0, aptitude_score:0, total_score:0, rank:0 }); }); if(bulkData.length === 0) return showAlert('แจ้งเตือน', 'กรุณากรอกข้อมูลอย่างน้อย 1 รายการ'); showConfirm('ยืนยัน', `เพิ่ม ${bulkData.length} รายการ?`, () => { showLoading('กำลังบันทึก...'); window.dataSdk.createBulk(bulkData).then(res => { setTimeout(() => { hideLoading(); if(res.isOk) { closeModal(); showAlert('สำเร็จ', 'บันทึกเรียบร้อย'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); }
     function handleExcelUpload(input, type) { if(!input.files[0]) return; const reader = new FileReader(); reader.onload = (e) => { const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'}); const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1, raw: false, defval: ""}); if(type === 'student') { excelDataCache = []; for(let i=1; i<jsonData.length; i++) { const row = jsonData[i]; if(row[0] && row[2]) excelDataCache.push({ exam_id: String(row[0]), national_id: String(row[1]||''), full_name: String(row[2]), grade_level: String(row[3]||'m3').toLowerCase(), previous_school: String(row[4]||''), thai_score:0, math_score:0, science_score:0, english_score:0, aptitude_score:0, total_score:0, rank:0 }); } document.getElementById('excel-count').textContent = excelDataCache.length; document.getElementById('excel-preview-area').classList.remove('hidden'); document.getElementById('excel-preview-table').innerHTML = `<thead><tr class="bg-gray-100"><th>รหัส</th><th>ชื่อ</th><th>ชั้น</th></tr></thead><tbody>` + excelDataCache.slice(0,5).map(p=>`<tr><td>${p.exam_id}</td><td>${p.full_name}</td><td>${p.grade_level}</td></tr>`).join('') + `</tbody>`; } else if(type === 'score') { scoreDataCache = []; for(let i=1; i<jsonData.length; i++) { const row = jsonData[i]; if(row[0]) scoreDataCache.push({ exam_id: String(row[0]), science_score: row[1]||0, math_score: row[2]||0, english_score: row[3]||0 }); } document.getElementById('score-count').textContent = scoreDataCache.length; document.getElementById('score-preview-area').classList.remove('hidden'); document.getElementById('score-preview-table').innerHTML = `<thead><tr class="bg-gray-100"><th>รหัส</th><th>วิทย์</th><th>คณิต</th><th>อังกฤษ</th></tr></thead><tbody>` + scoreDataCache.slice(0,5).map(p=>`<tr><td>${p.exam_id}</td><td>${p.science_score}</td><td>${p.math_score}</td><td>${p.english_score}</td></tr>`).join('') + `</tbody>`; } }; reader.readAsArrayBuffer(input.files[0]); }
     function confirmExcelImport(type) { if(type === 'student' && excelDataCache.length > 0) { showConfirm('ยืนยัน', `นำเข้า ${excelDataCache.length} รายการ?`, () => { showLoading('กำลังนำเข้า...'); window.dataSdk.createBulk(excelDataCache).then(res => { setTimeout(() => { hideLoading(); if(res.isOk) { closeModal(); showAlert('สำเร็จ', 'เรียบร้อย'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); } else if(type === 'score' && scoreDataCache.length > 0) { showConfirm('ยืนยัน', `อัปเดตคะแนน ${scoreDataCache.length} รายการ?`, () => { showLoading('กำลังอัปเดตคะแนน...'); window.dataSdk.updateScoresBulk(scoreDataCache).then(res => { setTimeout(() => { hideLoading(); if(res.isOk) { closeModal(); showAlert('สำเร็จ', res.message); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); } }
+    // Updated deleteStudent to wait for async
     function deleteStudent(id) { showConfirm('ยืนยันลบ', 'ลบข้อมูลนี้หรือไม่?', () => { showLoading('กำลังลบ...'); window.dataSdk.delete({__backendId: id}).then(res => { setTimeout(() => { hideLoading(); if(res.isOk) showAlert('สำเร็จ', 'ลบเรียบร้อย'); else showAlert('ผิดพลาด', res.error.message); }, 500); }); }); }
     
     window.addEventListener('load', () => { window.dataSdk.init(dataHandler); render(); });
