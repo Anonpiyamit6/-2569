@@ -32,15 +32,91 @@
   </style>
 
   <script>
+    // ********** URL ของ Google Apps Script Web App **********
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzHuxMRlBpw6-_qwv2MgnUTQyuRcXYxwmwWS9TXopP7XtsiwJWXvFDMzTad9H2p1Ud9ag/exec';
+
     window.dataSdk = {
-      init: async (handler) => { window.dataSdkHandler = handler; await window.dataSdk.refresh(); return { isOk: true }; },
-      refresh: () => { return new Promise((resolve) => { google.script.run.withSuccessHandler((response) => { if (response.success) { const mappedData = response.students.map(s => ({ ...s, __backendId: s.id })); if (window.dataSdkHandler?.onDataChanged) window.dataSdkHandler.onDataChanged(mappedData); resolve({ isOk: true, data: mappedData }); } else resolve({ isOk: false, error: { message: response.message } }); }).withFailureHandler((err) => resolve({ isOk: false, error: { message: err.message } })).getAllStudents(); }); },
-      create: (data) => { return new Promise((resolve) => { google.script.run.withSuccessHandler(res => { if(res.success) { window.dataSdk.refresh().then(() => resolve({ isOk: true })); } else { resolve({ isOk: false, error: { message: res.message } }); } }).createStudent(JSON.stringify(data)); }); },
-      createBulk: (dataArray) => { return new Promise((resolve) => { google.script.run.withSuccessHandler(res => { if(res.success) { window.dataSdk.refresh().then(() => resolve({ isOk: true })); } else { resolve({ isOk: false, error: { message: res.message } }); } }).createStudentsBulk(JSON.stringify(dataArray)); }); },
-      updateScoresBulk: (dataArray) => { return new Promise((resolve) => { google.script.run.withSuccessHandler(res => { if(res.success) { window.dataSdk.refresh().then(() => resolve({ isOk: true, message: res.message })); } else { resolve({ isOk: false, error: { message: res.message } }); } }).updateScoresBulk(JSON.stringify(dataArray)); }); },
-      update: (data) => { return new Promise((resolve) => { const updateData = { ...data, id: data.__backendId }; google.script.run.withSuccessHandler(res => { if(res.success) { window.dataSdk.refresh().then(() => resolve({ isOk: true })); } else { resolve({ isOk: false, error: { message: res.message } }); } }).updateStudent(JSON.stringify(updateData)); }); },
-      delete: (data) => { return new Promise((resolve) => { google.script.run.withSuccessHandler(res => { if(res.success) { window.dataSdk.refresh().then(() => resolve({ isOk: true })); } else { resolve({ isOk: false, error: { message: res.message } }); } }).deleteStudent(data.__backendId); }); },
-      deleteBulk: (ids) => { return new Promise((resolve) => { google.script.run.withSuccessHandler(res => { if(res.success) { window.dataSdk.refresh().then(() => resolve({ isOk: true })); } else { resolve({ isOk: false, error: { message: res.message } }); } }).deleteStudentsBulk(JSON.stringify(ids)); }); }
+      init: async (handler) => { 
+        window.dataSdkHandler = handler; 
+        await window.dataSdk.refresh(); 
+        return { isOk: true }; 
+      },
+
+      // ฟังก์ชันกลางสำหรับเรียก API
+      _call: async (method, action, payload = null) => {
+        try {
+          let url = APPS_SCRIPT_URL;
+          let options = {};
+
+          if (method === 'GET') {
+            // ใช้ GET สำหรับดึงข้อมูล
+            url += `?action=${action}`;
+            options = { method: 'GET' };
+          } else {
+            // ใช้ POST (text/plain เพื่อเลี่ยง CORS preflight ของ Google)
+            options = {
+                method: 'POST',
+                body: JSON.stringify({ action: action, data: payload }),
+                headers: { "Content-Type": "text/plain;charset=utf-8" }
+            };
+          }
+
+          const res = await fetch(url, options);
+          const json = await res.json();
+          return json;
+        } catch (e) {
+          console.error("API Error:", e);
+          return { success: false, message: "Connection error: " + e.message };
+        }
+      },
+
+      refresh: async () => {
+        const response = await window.dataSdk._call('GET', 'getAllStudents');
+        if (response.success) {
+          const mappedData = response.students.map(s => ({ ...s, __backendId: s.id }));
+          if (window.dataSdkHandler?.onDataChanged) window.dataSdkHandler.onDataChanged(mappedData);
+          return { isOk: true, data: mappedData };
+        } else {
+          return { isOk: false, error: { message: response.message } };
+        }
+      },
+
+      create: async (data) => {
+        const res = await window.dataSdk._call('POST', 'createStudent', data);
+        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+        else return { isOk: false, error: { message: res.message } };
+      },
+
+      createBulk: async (dataArray) => {
+        const res = await window.dataSdk._call('POST', 'createStudentsBulk', dataArray);
+        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+        else return { isOk: false, error: { message: res.message } };
+      },
+
+      updateScoresBulk: async (dataArray) => {
+        const res = await window.dataSdk._call('POST', 'updateScoresBulk', dataArray);
+        if(res.success) { await window.dataSdk.refresh(); return { isOk: true, message: res.message }; }
+        else return { isOk: false, error: { message: res.message } };
+      },
+
+      update: async (data) => {
+        const updateData = { ...data, id: data.__backendId };
+        const res = await window.dataSdk._call('POST', 'updateStudent', updateData);
+        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+        else return { isOk: false, error: { message: res.message } };
+      },
+
+      delete: async (data) => {
+        const res = await window.dataSdk._call('POST', 'deleteStudent', { id: data.__backendId });
+        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+        else return { isOk: false, error: { message: res.message } };
+      },
+
+      deleteBulk: async (ids) => {
+        const res = await window.dataSdk._call('POST', 'deleteStudentsBulk', { ids: ids });
+        if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+        else return { isOk: false, error: { message: res.message } };
+      }
     };
   </script>
  </head>
