@@ -365,26 +365,37 @@
 
     function renderStudentView() {
        if(!currentUser) return;
+       
        const maxSci = 40; const maxMath = 30; const maxEng = 30; const maxTotal = 100;
+       
        const sSci = parseFloat(currentUser.science_score)||0;
        const sMath = parseFloat(currentUser.math_score)||0;
        const sEng = parseFloat(currentUser.english_score)||0;
        const sTotal = sSci + sMath + sEng;
+       
        const pSci = (sSci/maxSci)*100;
        const pMath = (sMath/maxMath)*100;
        const pEng = (sEng/maxEng)*100;
+
        const thaiGrade = getThaiGrade(currentUser.grade_level);
 
        document.getElementById('app').innerHTML = `
           <div class="h-full bg-[#fdfbf7] overflow-auto">
              <div class="gradient-bg h-48 w-full absolute top-0 left-0 z-0 rounded-b-[3rem] shadow-lg opacity-90"></div>
              <div class="relative z-10 max-w-4xl mx-auto p-4 pt-8 pb-10">
+                
                 <div class="flex justify-between items-start mb-6">
-                    <div>
-                        <h1 class="text-lg md:text-xl font-bold text-lime-900 leading-snug">ประกาศผลคะแนนการสอบ<br>แข่งขันทักษะวิชาการเพชรราชพฤกษ์ ปีการศึกษา 2569</h1>
-                        <p class="text-lime-800 font-medium text-sm mt-1">โรงเรียนบางสะพานวิทยา จังหวัดประจวบคีรีขันธ์</p>
+                    <div class="flex flex-col">
+                        <span class="text-lg md:text-xl font-bold text-lime-900 leading-tight">ประกาศผลคะแนนการสอบ</span>
+                        
+                        <span class="text-lg md:text-xl font-bold text-lime-900 leading-tight">แข่งขันทักษะวิชาการเพชรราชพฤกษ์</span>
+                        
+                        <span class="text-lg md:text-xl font-bold text-lime-900 leading-tight">ปีการศึกษา 2569</span>
+                        
+                        <span class="text-lime-800 font-medium text-sm mt-2">โรงเรียนบางสะพานวิทยา จังหวัดประจวบคีรีขันธ์</span>
                     </div>
-                    <button onclick="currentView='login';render()" class="bg-white/80 backdrop-blur-sm text-red-500 hover:bg-red-500 hover:text-white px-4 py-2 rounded-full text-xs font-bold shadow-sm transition-all border border-red-100">ออกจากระบบ</button>
+                    
+                    <button onclick="currentView='login';render()" class="shrink-0 bg-white/80 backdrop-blur-sm text-red-500 hover:bg-red-500 hover:text-white px-4 py-2 rounded-full text-xs font-bold shadow-sm transition-all border border-red-100 ml-2">ออกจากระบบ</button>
                 </div>
                 
                 <div class="bg-white rounded-[2rem] p-6 shadow-xl mb-6 relative overflow-hidden border border-lime-100">
@@ -403,12 +414,14 @@
                         <div class="flex justify-between items-end relative z-10"><span class="text-3xl font-bold text-gray-800">${sSci}</span><span class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">ร้อยละ ${pSci.toFixed(1)}</span></div>
                         <div class="w-full bg-gray-100 h-2 rounded-full overflow-hidden mt-3 relative z-10"><div class="bg-blue-400 h-2 rounded-full" style="width: ${pSci}%"></div></div>
                    </div>
+                   
                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2 relative overflow-hidden group hover:shadow-md transition-shadow">
                         <div class="absolute right-0 top-0 w-16 h-16 bg-red-50 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
                         <div class="flex justify-between items-center mb-1 relative z-10"><div class="flex items-center gap-2"><div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg></div><span class="text-gray-600 text-xs font-bold uppercase tracking-wider">คณิตศาสตร์</span></div><span class="text-[10px] text-gray-400 font-bold bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">เต็ม ${maxMath}</span></div>
                         <div class="flex justify-between items-end relative z-10"><span class="text-3xl font-bold text-gray-800">${sMath}</span><span class="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg">ร้อยละ ${pMath.toFixed(1)}</span></div>
                         <div class="w-full bg-gray-100 h-2 rounded-full overflow-hidden mt-3 relative z-10"><div class="bg-red-400 h-2 rounded-full" style="width: ${pMath}%"></div></div>
                    </div>
+
                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2 relative overflow-hidden group hover:shadow-md transition-shadow">
                         <div class="absolute right-0 top-0 w-16 h-16 bg-purple-50 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
                         <div class="flex justify-between items-center mb-1 relative z-10"><div class="flex items-center gap-2"><div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center text-purple-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg></div><span class="text-gray-600 text-xs font-bold uppercase tracking-wider">ภาษาอังกฤษ</span></div><span class="text-[10px] text-gray-400 font-bold bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">เต็ม ${maxEng}</span></div>
