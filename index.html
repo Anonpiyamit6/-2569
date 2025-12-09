@@ -32,80 +32,78 @@
   </style>
 
   <script>
-    // --- ตั้งค่า API Connection สำหรับ Vercel ---
-    // URL ของ Web App Deployment ล่าสุด
-    const API_URL = "https://script.google.com/macros/s/AKfycbzHuxMRlBpw6-_qwv2MgnUTQyuRcXYxwmwWS9TXopP7XtsiwJWXvFDMzTad9H2p1Ud9ag/exec";
+    // -----------------------------------------------------------
+    // ตั้งค่า URL ของ Google Apps Script Web App ที่ได้จากการ Deploy
+    // -----------------------------------------------------------
+    const API_URL = "วาง_URL_จาก_Google_Apps_Script_ตรงนี้"; 
+    // ตัวอย่าง: "https://script.google.com/macros/s/AKfycbx.../exec"
 
-    // ฟังก์ชันยิง Request ไปยัง Google Apps Script
-    // ใช้ text/plain เพื่อเลี่ยง CORS Preflight และ JSON.stringify ใน body
-    async function apiRequest(action, payload = null) {
-        if (action === 'getAll') {
-            const res = await fetch(API_URL);
-            return await res.json();
-        } else {
-            const res = await fetch(API_URL, {
-                method: "POST",
-                body: JSON.stringify({ action: action, data: payload })
-            });
-            return await res.json();
-        }
+    async function callApi(action, data = {}) {
+        const body = JSON.stringify({ action, ...data });
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            body: body,
+            // สำคัญ: ใช้ text/plain เพื่อหลีกเลี่ยง CORS preflight issues ของ Google Apps Script
+            headers: { "Content-Type": "text/plain;charset=utf-8" } 
+        });
+        return await response.json();
     }
 
-    // dataSdk ฉบับปรับปรุงใช้ fetch แทน google.script.run
     window.dataSdk = {
-      init: async (handler) => { 
-          window.dataSdkHandler = handler; 
-          await window.dataSdk.refresh(); 
-          return { isOk: true }; 
-      },
+      init: async (handler) => { window.dataSdkHandler = handler; await window.dataSdk.refresh(); return { isOk: true }; },
       refresh: async () => { 
-          try {
-              const response = await apiRequest('getAll');
-              if (response.success) { 
-                  // Map ข้อมูลให้มี field __backendId เพื่อใช้ภายใน
-                  const mappedData = response.students.map(s => ({ ...s, __backendId: s.id })); 
-                  if (window.dataSdkHandler?.onDataChanged) window.dataSdkHandler.onDataChanged(mappedData); 
-                  return { isOk: true, data: mappedData }; 
-              } else {
-                  return { isOk: false, error: { message: response.message } };
-              }
-          } catch(e) {
-              console.error(e);
-              return { isOk: false, error: { message: "เชื่อมต่อ Server ไม่ได้ กรุณาลองใหม่" } };
-          }
+        try {
+            const res = await callApi('getAllStudents');
+            if (res.success) { 
+                const mappedData = res.students.map(s => ({ ...s, __backendId: s.id })); 
+                if (window.dataSdkHandler?.onDataChanged) window.dataSdkHandler.onDataChanged(mappedData); 
+                return { isOk: true, data: mappedData }; 
+            } 
+            return { isOk: false, error: { message: res.message } };
+        } catch(e) { return { isOk: false, error: { message: e.message } }; }
       },
-      create: async (data) => { 
-          const res = await apiRequest('create', data);
-          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-          else return { isOk: false, error: { message: res.message } };
+      create: async (data) => {
+        try {
+            const res = await callApi('createStudent', { data });
+            if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+            return { isOk: false, error: { message: res.message } };
+        } catch(e) { return { isOk: false, error: { message: e.message } }; }
       },
-      createBulk: async (dataArray) => { 
-          const res = await apiRequest('createBulk', dataArray);
-          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-          else return { isOk: false, error: { message: res.message } };
+      createBulk: async (dataArray) => {
+        try {
+            const res = await callApi('createStudentsBulk', { data: dataArray });
+            if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+            return { isOk: false, error: { message: res.message } };
+        } catch(e) { return { isOk: false, error: { message: e.message } }; }
       },
-      updateScoresBulk: async (dataArray) => { 
-          const res = await apiRequest('updateScoresBulk', dataArray);
-          if(res.success) { await window.dataSdk.refresh(); return { isOk: true, message: res.message }; }
-          else return { isOk: false, error: { message: res.message } };
+      updateScoresBulk: async (dataArray) => {
+        try {
+            const res = await callApi('updateScoresBulk', { data: dataArray });
+            if(res.success) { await window.dataSdk.refresh(); return { isOk: true, message: res.message }; }
+            return { isOk: false, error: { message: res.message } };
+        } catch(e) { return { isOk: false, error: { message: e.message } }; }
       },
-      update: async (data) => { 
-          const updateData = { ...data, id: data.__backendId }; 
-          const res = await apiRequest('update', updateData);
-          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-          else return { isOk: false, error: { message: res.message } };
+      update: async (data) => {
+        try {
+            const updateData = { ...data, id: data.__backendId };
+            const res = await callApi('updateStudent', { data: updateData });
+            if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+            return { isOk: false, error: { message: res.message } };
+        } catch(e) { return { isOk: false, error: { message: e.message } }; }
       },
-      delete: async (data) => { 
-          // ส่ง id ไปลบ
-          const res = await apiRequest('delete', { id: data.__backendId });
-          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-          else return { isOk: false, error: { message: res.message } };
+      delete: async (data) => {
+        try {
+            const res = await callApi('deleteStudent', { id: data.__backendId });
+            if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+            return { isOk: false, error: { message: res.message } };
+        } catch(e) { return { isOk: false, error: { message: e.message } }; }
       },
-      deleteBulk: async (ids) => { 
-          // ส่ง Array id ไปลบ
-          const res = await apiRequest('deleteBulk', { ids: ids });
-          if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
-          else return { isOk: false, error: { message: res.message } };
+      deleteBulk: async (ids) => {
+        try {
+            const res = await callApi('deleteStudentsBulk', { ids });
+            if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
+            return { isOk: false, error: { message: res.message } };
+        } catch(e) { return { isOk: false, error: { message: e.message } }; }
       }
     };
   </script>
@@ -202,6 +200,7 @@
   <div id="loading-modal" class="hidden-force fixed inset-0 flex items-center justify-center z-[300]"><div class="modal-overlay absolute w-full h-full bg-white/80 backdrop-blur-sm"></div><div class="bg-white rounded-3xl shadow-xl p-6 w-48 text-center relative z-[301] border border-lime-50"><div class="mx-auto w-12 h-12 border-4 border-lime-100 border-t-lime-500 rounded-full animate-spin mb-3"></div><p class="text-lime-600 font-bold text-sm" id="loading-message">กำลังโหลด...</p></div></div>
   
   <script>
+    // Config พร้อมชื่อโรงเรียนตัวไม่หนา
     const defaultConfig = { 
         system_title: "ระบบประกาศผลคะแนน<br>การสอบแข่งขันทักษะวิชาการเพชรราชพฤกษ์<br><span class='text-sm font-normal'>โรงเรียนบางสะพานวิทยา จังหวัดประจวบคีรีขันธ์</span>", 
         admission_year: "2569", 
@@ -211,12 +210,12 @@
         text_color: "#374151", 
         surface_color: "#ffffff" 
     };
+
     let currentUser = null, currentView = 'login', adminTab = 'm1', studentsData = [], searchQuery = '', formMode = 'create', excelDataCache = [], scoreDataCache = [], confirmCallback = null, isSidebarOpen = false, checkedIds = new Set();
 
     function getThaiGrade(code) { const map = { 'p4': 'ประถมศึกษาปีที่ 4', 'p5': 'ประถมศึกษาปีที่ 5', 'p6': 'ประถมศึกษาปีที่ 6', 'm3': 'มัธยมศึกษาปีที่ 3' }; return map[code.toLowerCase()] || code; }
     function toggleSidebar() { const sb=document.getElementById('sidebar'), ov=document.getElementById('sidebar-overlay'); isSidebarOpen=!isSidebarOpen; if(isSidebarOpen){sb.classList.remove('-translate-x-full');ov.classList.remove('hidden');}else{sb.classList.add('-translate-x-full');ov.classList.add('hidden');} }
     
-    // Modal Helpers
     function showAlert(t, m) { document.getElementById('alert-title').textContent = t; document.getElementById('alert-message').textContent = m; document.getElementById('alert-modal').classList.remove('hidden-force'); }
     function closeAlert() { document.getElementById('alert-modal').classList.add('hidden-force'); }
     function showConfirm(t, m, cb) { document.getElementById('confirm-title').textContent = t; document.getElementById('confirm-message').textContent = m; confirmCallback = cb; document.getElementById('confirm-modal').classList.remove('hidden-force'); }
@@ -230,24 +229,28 @@
     const dataHandler = { onDataChanged(data) { studentsData = data.sort((a, b) => b.total_score - a.total_score); let m1 = studentsData.filter(s => ['p4','p5','p6','m1'].includes(s.grade_level)); let m4 = studentsData.filter(s => ['m3','m4'].includes(s.grade_level)); m1.forEach((s, i) => s.rank = i+1); m4.forEach((s, i) => s.rank = i+1); if (currentView === 'admin') renderAdminDashboard(); else if (currentView === 'student' && currentUser) { const u = studentsData.find(s => String(s.national_id) === String(currentUser.national_id)); if(u) currentUser = u; renderStudentView(); } } };
     function render() { const app = document.getElementById('app'); if(currentView === 'login') renderLogin(); else if(currentView === 'admin') renderAdminDashboard(); else renderStudentView(); }
     
-    // Checkbox Logic
     function toggleAllCheckboxes(source) { const checkboxes = document.querySelectorAll('.row-checkbox'); checkboxes.forEach(cb => { cb.checked = source.checked; if(source.checked) checkedIds.add(cb.value); else checkedIds.delete(cb.value); }); updateDeleteButton(); }
     function toggleCheckbox(id) { const cb = document.querySelector(`.row-checkbox[value="${id}"]`); if(cb.checked) checkedIds.add(id); else checkedIds.delete(id); updateDeleteButton(); }
     function updateDeleteButton() { const btn = document.getElementById('btn-bulk-delete'); if(checkedIds.size > 0) { btn.classList.remove('hidden'); document.getElementById('selected-count').textContent = checkedIds.size; } else { btn.classList.add('hidden'); } }
-    async function executeBulkDelete() { if(checkedIds.size === 0) return; showConfirm('ยืนยันลบหมู่', `ต้องการลบข้อมูล ${checkedIds.size} รายการหรือไม่?`, () => { showLoading(`กำลังลบ ${checkedIds.size} รายการ...`); window.dataSdk.deleteBulk(Array.from(checkedIds)).then(res => { setTimeout(() => { hideLoading(); checkedIds.clear(); if(res.isOk) { showAlert('สำเร็จ', 'ลบข้อมูลเรียบร้อยแล้ว'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); }
+    function executeBulkDelete() { if(checkedIds.size === 0) return; showConfirm('ยืนยันลบหมู่', `ต้องการลบข้อมูล ${checkedIds.size} รายการหรือไม่?`, () => { showLoading(`กำลังลบ ${checkedIds.size} รายการ...`); window.dataSdk.deleteBulk(Array.from(checkedIds)).then(res => { setTimeout(() => { hideLoading(); checkedIds.clear(); if(res.isOk) { showAlert('สำเร็จ', 'ลบข้อมูลเรียบร้อยแล้ว'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); }
 
+    // ---------------------------------------------
+    // RENDER LOGIN: พื้นหลัง #B2B2B2 และข้อความเรียงบรรทัด
+    // ---------------------------------------------
     function renderLogin() {
       const config = window.elementSdk?.config || defaultConfig;
       document.getElementById('app').innerHTML = `
         <div class="h-full w-full bg-[#B2B2B2] flex items-center justify-center p-4 overflow-auto">
-          
           <div class="w-full max-w-md bg-white rounded-[2rem] shadow-xl p-8 relative overflow-hidden">
              <div class="absolute -top-10 -right-10 w-32 h-32 bg-yellow-100 rounded-full opacity-50 blur-xl"></div>
              <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-green-100 rounded-full opacity-50 blur-xl"></div>
              
              <div class="text-center mb-8 relative z-10">
                 <div class="mx-auto mb-6"><img src="https://img2.pic.in.th/pic/-69-1.png" alt="โลโก้โรงเรียน" class="h-32 w-auto mx-auto object-contain drop-shadow-md"></div>
-                <h1 class="text-xl font-bold text-gray-700 leading-tight">${config.system_title}</h1>
+                
+                <h2 class="text-gray-500 font-bold text-lg">ระบบประกาศผลคะแนน</h2>
+                <h1 class="text-xl md:text-2xl font-bold text-gray-800 leading-tight mt-1 mb-2">การสอบแข่งขันทักษะวิชาการเพชรราชพฤกษ์</h1>
+                <p class="text-gray-600 text-sm font-normal">โรงเรียนบางสะพานวิทยา จังหวัดประจวบคีรีขันธ์</p>
                 <p class="text-gray-400 mt-2 text-sm">ปีการศึกษา <span class="text-lime-600 font-bold">${config.admission_year}</span></p>
              </div>
              
@@ -295,7 +298,7 @@
              <button class="sidebar-btn text-red-400 hover:bg-red-50 mt-auto" onclick="currentView='login';render()">ออกจากระบบ</button>
           </div>
           <div class="flex-1 overflow-auto p-4 md:p-10 w-full">
-             <div class="flex flex-col md:flex-row justify-between md:items-end mb-6 gap-2"><div><h1 class="text-2xl md:text-3xl font-bold text-gray-800 mb-1">ข้อมูลผู้สอบ ${adminTab==='m1'?'ม.1':'ม.4'}</h1><p class="text-gray-400 text-sm">ทั้งหมด <span class="font-bold text-lime-600">${active.length}</span> คน</p></div></div>
+             <div class="flex flex-col md:flex-row justify-between md:items-end mb-6 gap-2"><div><h1 class="text-2xl md:text-3xl font-bold text-gray-800 mb-1">ข้อมูลผู้สอบ ${adminTab==='m1'?'ม.1 (ป.4-6)':'ม.4 (ม.3)'}</h1><p class="text-gray-400 text-sm">ทั้งหมด <span class="font-bold text-lime-600">${active.length}</span> คน</p></div></div>
              
              <div class="bg-white p-2 rounded-2xl shadow-sm mb-6 flex gap-2">
                 <div class="relative flex-1"><input type="text" id="search-input" placeholder="ค้นหาชื่อ, รหัส..." class="w-full pl-10 pr-4 py-3 rounded-xl border-none bg-gray-50 focus:bg-white focus:ring-2 focus:ring-lime-100 transition-all text-gray-600" value="${searchQuery}" onkeydown="if(event.key==='Enter') triggerSearch()"><svg class="w-5 h-5 text-gray-400 absolute left-3 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></div>
@@ -351,18 +354,14 @@
 
     function renderStudentView() {
        if(!currentUser) return;
-       
        const maxSci = 40; const maxMath = 30; const maxEng = 30; const maxTotal = 100;
-       
        const sSci = parseFloat(currentUser.science_score)||0;
        const sMath = parseFloat(currentUser.math_score)||0;
        const sEng = parseFloat(currentUser.english_score)||0;
        const sTotal = sSci + sMath + sEng;
-       
        const pSci = (sSci/maxSci)*100;
        const pMath = (sMath/maxMath)*100;
        const pEng = (sEng/maxEng)*100;
-
        const thaiGrade = getThaiGrade(currentUser.grade_level);
 
        document.getElementById('app').innerHTML = `
@@ -393,14 +392,12 @@
                         <div class="flex justify-between items-end relative z-10"><span class="text-3xl font-bold text-gray-800">${sSci}</span><span class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">ร้อยละ ${pSci.toFixed(1)}</span></div>
                         <div class="w-full bg-gray-100 h-2 rounded-full overflow-hidden mt-3 relative z-10"><div class="bg-blue-400 h-2 rounded-full" style="width: ${pSci}%"></div></div>
                    </div>
-                   
                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2 relative overflow-hidden group hover:shadow-md transition-shadow">
                         <div class="absolute right-0 top-0 w-16 h-16 bg-red-50 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
                         <div class="flex justify-between items-center mb-1 relative z-10"><div class="flex items-center gap-2"><div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg></div><span class="text-gray-600 text-xs font-bold uppercase tracking-wider">คณิตศาสตร์</span></div><span class="text-[10px] text-gray-400 font-bold bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">เต็ม ${maxMath}</span></div>
                         <div class="flex justify-between items-end relative z-10"><span class="text-3xl font-bold text-gray-800">${sMath}</span><span class="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg">ร้อยละ ${pMath.toFixed(1)}</span></div>
                         <div class="w-full bg-gray-100 h-2 rounded-full overflow-hidden mt-3 relative z-10"><div class="bg-red-400 h-2 rounded-full" style="width: ${pMath}%"></div></div>
                    </div>
-
                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2 relative overflow-hidden group hover:shadow-md transition-shadow">
                         <div class="absolute right-0 top-0 w-16 h-16 bg-purple-50 rounded-bl-full -mr-2 -mt-2 transition-transform group-hover:scale-110"></div>
                         <div class="flex justify-between items-center mb-1 relative z-10"><div class="flex items-center gap-2"><div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center text-purple-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg></div><span class="text-gray-600 text-xs font-bold uppercase tracking-wider">ภาษาอังกฤษ</span></div><span class="text-[10px] text-gray-400 font-bold bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">เต็ม ${maxEng}</span></div>
@@ -428,13 +425,11 @@
     function showAddStudentForm() { formMode = 'create'; document.getElementById('modal-title').textContent = 'เพิ่มผู้เข้าสอบใหม่'; document.getElementById('add-mode-tabs').classList.remove('hidden'); document.getElementById('score-section').classList.add('hidden'); switchAddTab('single'); document.getElementById('student-form').reset(); openModal(); }
     function showEditForm(id) { formMode = 'update'; document.getElementById('modal-title').textContent = 'แก้ไขข้อมูล'; document.getElementById('add-mode-tabs').classList.add('hidden'); ['single','multiple','excel','score'].forEach(v => document.getElementById(`view-${v}`).classList.add('hidden')); document.getElementById('view-single').classList.remove('hidden'); document.getElementById('score-section').classList.remove('hidden'); const s = studentsData.find(x => x.__backendId === id); if(!s) return; document.getElementById('student-backend-id').value = s.__backendId; document.getElementById('form-national-id').value = s.national_id || ''; document.getElementById('form-exam-id').value = s.exam_id; document.getElementById('form-grade').value = s.grade_level; document.getElementById('form-name').value = s.full_name; document.getElementById('form-school').value = s.previous_school; document.getElementById('score-science').value = s.science_score; document.getElementById('score-math').value = s.math_score; document.getElementById('score-english').value = s.english_score; openModal(); }
     
-    // Updated handleSingleSubmit to wait for async
     function handleSingleSubmit(e) { e.preventDefault(); const scores = [0, parseFloat(document.getElementById('score-math').value)||0, parseFloat(document.getElementById('score-science').value)||0, parseFloat(document.getElementById('score-english').value)||0, 0]; const data = { exam_id: document.getElementById('form-exam-id').value, national_id: document.getElementById('form-national-id').value, grade_level: document.getElementById('form-grade').value, full_name: document.getElementById('form-name').value, previous_school: document.getElementById('form-school').value, thai_score: scores[0], math_score: scores[1], science_score: scores[2], english_score: scores[3], aptitude_score: scores[4], total_score: scores.reduce((a,b)=>a+b,0) }; showLoading('กำลังบันทึก...'); const action = formMode === 'create' ? window.dataSdk.create(data) : (data.__backendId = document.getElementById('student-backend-id').value, window.dataSdk.update(data)); action.then(res => { setTimeout(() => { hideLoading(); if(res.isOk) { closeModal(); showAlert('สำเร็จ', 'บันทึกเรียบร้อย'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }
     function addMultipleRow() { const tr = document.createElement('tr'); tr.className = 'bg-white border-b hover:bg-gray-50'; tr.innerHTML = `<td class="p-2"><input type="text" class="w-full border rounded px-2 py-1 multi-national-id text-xs" placeholder="บัตรฯ"></td><td class="p-2"><input type="text" class="w-full border rounded px-2 py-1 multi-exam-id text-xs" placeholder="รหัส"></td><td class="p-2"><input type="text" class="w-full border rounded px-2 py-1 multi-name text-xs" placeholder="ชื่อ"></td><td class="p-2"><select class="w-full border rounded px-2 py-1 multi-grade text-xs"><option value="p6">ป.6</option><option value="p5">ป.5</option><option value="p4">ป.4</option><option value="m3">ม.3</option></select></td><td class="p-2"><input type="text" class="w-full border rounded px-2 py-1 multi-school text-xs" placeholder="รร."></td><td class="p-2 text-center"><button type="button" onclick="this.closest('tr').remove()" class="text-red-500 font-bold">x</button></td>`; document.getElementById('multiple-tbody').appendChild(tr); }
     function handleMultipleSubmit() { const rows = document.querySelectorAll('#multiple-tbody tr'); const bulkData = []; rows.forEach(row => { const nid = row.querySelector('.multi-national-id').value.trim(); const id = row.querySelector('.multi-exam-id').value.trim(); const name = row.querySelector('.multi-name').value.trim(); if(id && name) bulkData.push({ exam_id: id, national_id: nid, full_name: name, grade_level: row.querySelector('.multi-grade').value, previous_school: row.querySelector('.multi-school').value.trim(), thai_score:0, math_score:0, science_score:0, english_score:0, aptitude_score:0, total_score:0, rank:0 }); }); if(bulkData.length === 0) return showAlert('แจ้งเตือน', 'กรุณากรอกข้อมูลอย่างน้อย 1 รายการ'); showConfirm('ยืนยัน', `เพิ่ม ${bulkData.length} รายการ?`, () => { showLoading('กำลังบันทึก...'); window.dataSdk.createBulk(bulkData).then(res => { setTimeout(() => { hideLoading(); if(res.isOk) { closeModal(); showAlert('สำเร็จ', 'บันทึกเรียบร้อย'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); }
     function handleExcelUpload(input, type) { if(!input.files[0]) return; const reader = new FileReader(); reader.onload = (e) => { const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'}); const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1, raw: false, defval: ""}); if(type === 'student') { excelDataCache = []; for(let i=1; i<jsonData.length; i++) { const row = jsonData[i]; if(row[0] && row[2]) excelDataCache.push({ exam_id: String(row[0]), national_id: String(row[1]||''), full_name: String(row[2]), grade_level: String(row[3]||'m3').toLowerCase(), previous_school: String(row[4]||''), thai_score:0, math_score:0, science_score:0, english_score:0, aptitude_score:0, total_score:0, rank:0 }); } document.getElementById('excel-count').textContent = excelDataCache.length; document.getElementById('excel-preview-area').classList.remove('hidden'); document.getElementById('excel-preview-table').innerHTML = `<thead><tr class="bg-gray-100"><th>รหัส</th><th>ชื่อ</th><th>ชั้น</th></tr></thead><tbody>` + excelDataCache.slice(0,5).map(p=>`<tr><td>${p.exam_id}</td><td>${p.full_name}</td><td>${p.grade_level}</td></tr>`).join('') + `</tbody>`; } else if(type === 'score') { scoreDataCache = []; for(let i=1; i<jsonData.length; i++) { const row = jsonData[i]; if(row[0]) scoreDataCache.push({ exam_id: String(row[0]), science_score: row[1]||0, math_score: row[2]||0, english_score: row[3]||0 }); } document.getElementById('score-count').textContent = scoreDataCache.length; document.getElementById('score-preview-area').classList.remove('hidden'); document.getElementById('score-preview-table').innerHTML = `<thead><tr class="bg-gray-100"><th>รหัส</th><th>วิทย์</th><th>คณิต</th><th>อังกฤษ</th></tr></thead><tbody>` + scoreDataCache.slice(0,5).map(p=>`<tr><td>${p.exam_id}</td><td>${p.science_score}</td><td>${p.math_score}</td><td>${p.english_score}</td></tr>`).join('') + `</tbody>`; } }; reader.readAsArrayBuffer(input.files[0]); }
     function confirmExcelImport(type) { if(type === 'student' && excelDataCache.length > 0) { showConfirm('ยืนยัน', `นำเข้า ${excelDataCache.length} รายการ?`, () => { showLoading('กำลังนำเข้า...'); window.dataSdk.createBulk(excelDataCache).then(res => { setTimeout(() => { hideLoading(); if(res.isOk) { closeModal(); showAlert('สำเร็จ', 'เรียบร้อย'); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); } else if(type === 'score' && scoreDataCache.length > 0) { showConfirm('ยืนยัน', `อัปเดตคะแนน ${scoreDataCache.length} รายการ?`, () => { showLoading('กำลังอัปเดตคะแนน...'); window.dataSdk.updateScoresBulk(scoreDataCache).then(res => { setTimeout(() => { hideLoading(); if(res.isOk) { closeModal(); showAlert('สำเร็จ', res.message); } else { showAlert('ผิดพลาด', res.error.message); } }, 500); }); }); } }
-    // Updated deleteStudent to wait for async
     function deleteStudent(id) { showConfirm('ยืนยันลบ', 'ลบข้อมูลนี้หรือไม่?', () => { showLoading('กำลังลบ...'); window.dataSdk.delete({__backendId: id}).then(res => { setTimeout(() => { hideLoading(); if(res.isOk) showAlert('สำเร็จ', 'ลบเรียบร้อย'); else showAlert('ผิดพลาด', res.error.message); }, 500); }); }); }
     
     window.addEventListener('load', () => { window.dataSdk.init(dataHandler); render(); });
