@@ -242,16 +242,26 @@
       document.getElementById('app').innerHTML = `
         <div class="h-full w-full bg-[#B2B2B2] flex items-center justify-center p-4 overflow-auto">
           <div class="w-full max-w-md bg-white rounded-[2rem] shadow-xl p-8 relative overflow-hidden">
+             
              <div class="absolute -top-10 -right-10 w-32 h-32 bg-yellow-100 rounded-full opacity-50 blur-xl"></div>
              <div class="absolute -bottom-10 -left-10 w-32 h-32 bg-green-100 rounded-full opacity-50 blur-xl"></div>
              
              <div class="text-center mb-8 relative z-10">
                 <div class="mx-auto mb-6"><img src="https://img2.pic.in.th/pic/-69-1.png" alt="โลโก้โรงเรียน" class="h-32 w-auto mx-auto object-contain drop-shadow-md"></div>
                 
-                <h2 class="text-gray-500 font-bold text-lg">ระบบประกาศผลคะแนน</h2>
-                <h1 class="text-xl md:text-2xl font-bold text-gray-800 leading-tight mt-1 mb-2">การสอบแข่งขันทักษะวิชาการเพชรราชพฤกษ์</h1>
-                <p class="text-gray-600 text-sm font-normal">โรงเรียนบางสะพานวิทยา จังหวัดประจวบคีรีขันธ์</p>
-                <p class="text-gray-400 mt-2 text-sm">ปีการศึกษา <span class="text-lime-600 font-bold">${config.admission_year}</span></p>
+                <div class="text-gray-900 font-bold text-lg md:text-xl leading-tight">
+                    ระบบประกาศผลคะแนน
+                </div>
+                
+                <div class="text-gray-900 font-bold text-lg md:text-xl leading-tight mt-1">
+                    การสอบแข่งขันทักษะวิชาการเพชรราชพฤกษ์
+                </div>
+                
+                <p class="text-gray-600 text-sm font-normal mt-2">
+                    โรงเรียนบางสะพานวิทยา จังหวัดประจวบคีรีขันธ์
+                </p>
+                
+                <p class="text-gray-400 mt-4 text-sm">ปีการศึกษา <span class="text-lime-600 font-bold">${config.admission_year}</span></p>
              </div>
              
              <div class="space-y-3 mb-6 relative z-10" id="login-buttons">
