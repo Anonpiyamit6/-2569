@@ -32,88 +32,102 @@
   </style>
 
   <script>
-    // ********** URL ของ Google Apps Script Web App **********
+    // ********** ตรวจสอบ URL ให้แน่ใจว่าลงท้ายด้วย /exec **********
     const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzHuxMRlBpw6-_qwv2MgnUTQyuRcXYxwmwWS9TXopP7XtsiwJWXvFDMzTad9H2p1Ud9ag/exec';
 
     window.dataSdk = {
       init: async (handler) => { 
         window.dataSdkHandler = handler; 
+        console.log("Initializing SDK...");
         await window.dataSdk.refresh(); 
         return { isOk: true }; 
       },
 
       // ฟังก์ชันกลางสำหรับเรียก API
-      _call: async (method, action, payload = null) => {
+      _call: async (action, payload = null) => {
         try {
-          let url = APPS_SCRIPT_URL;
-          let options = {};
+          console.log(`Calling API: ${action}`);
+          // ใช้ POST เสมอเพื่อความเสถียรในการส่งข้อมูล JSON ข้าม Domain
+          const options = {
+              method: 'POST',
+              body: JSON.stringify({ action: action, data: payload }),
+              // ใช้ text/plain เพื่อหลีกเลี่ยง CORS Preflight check ของ Google Apps Script
+              headers: { "Content-Type": "text/plain;charset=utf-8" }
+          };
 
-          if (method === 'GET') {
-            // ใช้ GET สำหรับดึงข้อมูล
-            url += `?action=${action}`;
-            options = { method: 'GET' };
-          } else {
-            // ใช้ POST (text/plain เพื่อเลี่ยง CORS preflight ของ Google)
-            options = {
-                method: 'POST',
-                body: JSON.stringify({ action: action, data: payload }),
-                headers: { "Content-Type": "text/plain;charset=utf-8" }
-            };
+          const res = await fetch(APPS_SCRIPT_URL, options);
+          
+          if (!res.ok) {
+             throw new Error(`HTTP Error: ${res.status}`);
           }
 
-          const res = await fetch(url, options);
           const json = await res.json();
+          console.log(`API Response (${action}):`, json);
           return json;
         } catch (e) {
-          console.error("API Error:", e);
-          return { success: false, message: "Connection error: " + e.message };
+          console.error("API Connection Error:", e);
+          // ถ้า error ให้ return object ที่มี success: false
+          return { success: false, message: "การเชื่อมต่อขัดข้อง: " + e.message + " (กรุณาเช็คว่า Deploy เป็น 'Anyone' หรือยัง)" };
         }
       },
 
       refresh: async () => {
-        const response = await window.dataSdk._call('GET', 'getAllStudents');
-        if (response.success) {
-          const mappedData = response.students.map(s => ({ ...s, __backendId: s.id }));
-          if (window.dataSdkHandler?.onDataChanged) window.dataSdkHandler.onDataChanged(mappedData);
-          return { isOk: true, data: mappedData };
-        } else {
-          return { isOk: false, error: { message: response.message } };
+        // ใช้ getAllStudents ผ่าน _call (ซึ่งจะส่งเป็น POST ไปที่ doGet/doPost ของ GAS)
+        // เพื่อความชัวร์ เราเรียก action 'getAllStudents'
+        // แต่ใน Code.gs เราแก้ doPost ให้รองรับ getAllStudents ไหม? 
+        // เพื่อความปลอดภัย เราใช้ GET สำหรับดึงข้อมูล ตามหลักการ
+        try {
+            const url = `${APPS_SCRIPT_URL}?action=getAllStudents`;
+            const res = await fetch(url);
+            const response = await res.json();
+            
+            if (response.success) {
+                const mappedData = response.students.map(s => ({ ...s, __backendId: s.id }));
+                if (window.dataSdkHandler?.onDataChanged) window.dataSdkHandler.onDataChanged(mappedData);
+                return { isOk: true, data: mappedData };
+            } else {
+                console.error("Server returned error:", response);
+                return { isOk: false, error: { message: response.message } };
+            }
+        } catch (e) {
+             console.error("Refresh Error:", e);
+             return { isOk: false, error: { message: "โหลดข้อมูลไม่สำเร็จ" } };
         }
       },
 
       create: async (data) => {
-        const res = await window.dataSdk._call('POST', 'createStudent', data);
+        const res = await window.dataSdk._call('createStudent', data);
         if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
         else return { isOk: false, error: { message: res.message } };
       },
 
       createBulk: async (dataArray) => {
-        const res = await window.dataSdk._call('POST', 'createStudentsBulk', dataArray);
+        const res = await window.dataSdk._call('createStudentsBulk', dataArray);
         if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
         else return { isOk: false, error: { message: res.message } };
       },
 
       updateScoresBulk: async (dataArray) => {
-        const res = await window.dataSdk._call('POST', 'updateScoresBulk', dataArray);
+        const res = await window.dataSdk._call('updateScoresBulk', dataArray);
         if(res.success) { await window.dataSdk.refresh(); return { isOk: true, message: res.message }; }
         else return { isOk: false, error: { message: res.message } };
       },
 
       update: async (data) => {
         const updateData = { ...data, id: data.__backendId };
-        const res = await window.dataSdk._call('POST', 'updateStudent', updateData);
+        const res = await window.dataSdk._call('updateStudent', updateData);
         if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
         else return { isOk: false, error: { message: res.message } };
       },
 
       delete: async (data) => {
-        const res = await window.dataSdk._call('POST', 'deleteStudent', { id: data.__backendId });
+        const res = await window.dataSdk._call('deleteStudent', { id: data.__backendId });
         if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
         else return { isOk: false, error: { message: res.message } };
       },
 
       deleteBulk: async (ids) => {
-        const res = await window.dataSdk._call('POST', 'deleteStudentsBulk', { ids: ids });
+        const res = await window.dataSdk._call('deleteStudentsBulk', { ids: ids });
         if(res.success) { await window.dataSdk.refresh(); return { isOk: true }; }
         else return { isOk: false, error: { message: res.message } };
       }
